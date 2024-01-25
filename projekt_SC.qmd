@@ -1,0 +1,146 @@
+---
+title: "projekt_SC"
+author: "DS, PT"
+format: html
+editor: visual
+---
+
+1.  Czego dotyczy
+2.  Identyfikacja nielosowych składowych
+    1.  trend - aproksymacja za pomocą wielomianu
+    2.  sezonowość - Holt-Winters/ aproksymacja trendu za pomocą 2. wielomianu/SARlMA
+3.  Identyfikacja (modelowanie) reszt
+    1.  korelacje
+    2.  stacjonarność
+    3.  homoskedastyczność
+    4.  Stacjonarny i homoskedastyczny -\> ARIMA
+    5.  Niejednorodna wariancja i reszty nieskorelowane -\>GARCH
+4.  Bezpośrednia identyfikacja przed dekompozycją: modele SARIMA (jeśli występuje okresowość)/ARlMA (niestacjonarność)
+
+integracja zwykła i sezonowa
+
+# Czego dotyczy projekt
+
+Dane przedstawiają liczbę fabrycznie nowych samochodów osobowych zarejestrowanych po raz pierwszy na terytorium Polski. Są to dane kwartalne pochodzące z lat 2010 - 2022.
+
+```{r, warning = F, message = F}
+library(ggplot2)
+library(tseries)
+```
+
+```{r}
+data <- read.csv(".\\pojazdy.csv", sep = ';')
+data <- data[,-c(1,2,55)]
+X <- matrix(t(matrix(data, ncol = 4, byrow = F)))
+X <- as.numeric(X)
+```
+
+```{r}
+plot(X, lwd = 2, type = "l", xlab = "czas", ylab = "liczba samochodów"
+```
+
+# Identyfikacja nielosowych składowych 
+
+## trend - aproksymacja za pomocą wielomianu 
+
+TODO
+
+## sezonowość - Holt-Winters/ aproksymacja trendu za pomocą 2. wielomianu/SARlMA 
+
+TODO
+
+# Identyfikacja (modelowanie) reszt 
+
+## korelacje 
+
+TODO
+
+## stacjonarność 
+
+TODO
+
+## homoskedastyczność 
+
+TODO
+
+## Stacjonarny i homoskedastyczny -\> ARIMA
+
+LUB
+
+## Niejednorodna wariancja i reszty nieskorelowane -\>GARCH 
+
+# Bezpośrednia identyfikacja przed dekompozycją: modele SARIMA (jeśli występuje okresowość)/ARlMA (niestacjonarność) 
+
+TODO
+
+# integracja zwykła i sezonowa 
+
+TODO
+
+### Dekompozycja
+
+```{r}
+ts_data <- ts(as.data.frame(X), frequency = 4)
+decomposed_ts <- decompose(ts_data)
+plot(decomposed_ts)
+```
+
+```{r}
+trend <- decomposed_ts$trend
+seasonal <- decomposed_ts$seasonal
+reszty <- decomposed_ts$random
+```
+
+```{r}
+plot(cbind(trend,seasonal), main='Składowe trendu i sezonowości')
+plot(cbind(seasonal,reszty), main='Składowe sezonowości i reszt')
+plot(seasonal,main='Sezonowość')
+```
+
+### Stacjonarność
+
+Do sprawdzenia stacjonarności szeregu użyjemy rozszerzonego testu Dickeya-Fullera i testu KPSS.
+
+**Rozszerzony test Dickeya-Fullera**
+
+$H_0$: Szereg czasowy jest niestacjonarny
+
+$H_1$: Szereg czasowy jest stacjonarny
+
+```{r}
+adf.test(X)
+```
+
+Wartość $p$ jest większa niż przyjęty poziom istotności $0.05$, zatem nie mamy podstaw do odrzucenia hipotezy zerowej. Oznacza to, że szereg jest niestacjonarny.
+
+**Test KPSS**
+
+$H_0$: Szereg czasowy jest stacjonarny
+
+$H_1$: Szereg czasowy jest niestacjonarny
+
+```{r, warning = F}
+kpss.test(X)
+```
+
+Wartość $p$ jest mniejsza niż przyjęty poziom istotności, zatem odrzucamy hipotezę zerową. Test KPSS również wykazał, że szereg jest niestacjonarny.
+
+#### Różnicowanie
+
+```{r, warning = F, message = F}
+adf.test(diff(X))
+```
+
+```{r, warning = F, message = F}
+kpss.test(diff(X))
+```
+
+Po różnicowaniu szereg jest stacjonarny.
+
+```{r}
+data[1:13,]
+```
+
+```{r}
+length(data)/4
+```
