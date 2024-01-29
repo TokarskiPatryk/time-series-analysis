@@ -69,13 +69,12 @@ Wybór stopnia wielomianu
 df <- NULL
 for(j in 1:10) {
   x <- diff(X, differences = j)
-  plot(x, main=paste("różnice ", j, 'stopnia'),
-       col=2, type='l', lwd=2)
-  abline(h=0,col=1)
+  #plot(x, main=paste("różnice ", j, 'stopnia'),
+      # col=2, type='l', lwd=2)
+  #abline(h=0,col=1)
   m <- mean(x)
   sigma <- mean(x^2)/choose(2*j, j)
   df <- rbind(df, c(j,m,sigma))
-  Sys.sleep(2)
 }
 
 df <- as.data.frame(df)
@@ -99,6 +98,8 @@ model <- lm(X ~ t + I(t^2) + I(t^3) + I(t^4))
 ```
 
 ## sezonowość - Holt-Winters/ aproksymacja trendu za pomocą 2. wielomianu/SARlMA
+
+## dekompozycja za pomocą funkcji Holt-Winters
 
 Zbadam sezonowość metodą Holta-Wintersa. Podejrzewamy, że sezonowość jest kwartalna. Skorzystaliśmy z funkcji \`HoltWinters\` , w której wskazaliśmy że nasz model jest multiplikatywny, ponieważ wartości przez cały czas rosną, tym samym rośnie rozmiar sezonowych wahań.
 
@@ -182,15 +183,9 @@ Na podstawie obu testów stwierdzamy, że szereg nie jest stacjonarny.
 ```{r}
 gqtest(model)
 bptest(model)
-
-# co teraz :(
 ```
 
 nie ma podstaw do odrzucenia homoskedastycznosci
-
-## Stacjonarny i homoskedastyczny -\> ARIMA
-
-LUB
 
 ## Niejednorodna wariancja i reszty nieskorelowane -\>GARCH
 
@@ -224,7 +219,6 @@ GARCH_fit <- function(x) {
 ```
 
 ```{r}
-
 GARCH_fit(df)
 
 mod <- garch(df, order=c(1,3))
@@ -239,80 +233,31 @@ test Box-Ljunga -\> nie mamy podstaw do odrzucenia hipotezy o braku autokorelacj
 plot(mod)
 ```
 
-```{r}
-plot(mod)
-```
-
-TODO garch forecast
-
-# Bezpośrednia identyfikacja przed dekompozycją: modele SARIMA (jeśli występuje okresowość)/ARlMA (niestacjonarność)
-
-TODO forecast?
+# Bezpośrednia identyfikacja przed dekompozycją: modele SARIMA (jeśli występuje okresowość)
 
 ```{r}
 df
 auto_arima <- auto.arima(df) # 0 1 2
 auto_arima$model
-auto_arima$fitted %>% as.vector() %>% plot()
+auto_arima$fitted %>% as.vector() %>% plot(type='l', col='red')
 lines(df)
 
+auto_arima$model$phi #wsp. autoregresji
+auto_arima$model$theta #wsp. sredniej ruchomej
+auto_arima$model$Delta #stopien integracji
 ```
 
-TODO
-
-# integracja zwykła i sezonowa
-
-różnicowanie sezonowe
+# Różnicowanie
 
 ```{r}
-roznicowanie <- diff(df, lag=4)
+roznicowanie <- diff(df)
 plot(roznicowanie, type='l')
-abline(b=0, a=0)
-```
-
-```{r}
-plot(diff(roznicowanie, lag=2), type='l')
 abline(b=0, a=0, col='red')
 ```
 
-TODO
-
-### Dekompozycja
-
 ```{r}
-ts_data <- ts(as.data.frame(X), frequency = 4)
-decomposed_ts <- decompose(ts_data)
-plot(decomposed_ts)
+adf.test(diff(df))
+kpss.test(diff(df))
 ```
 
-```{r}
-trend <- decomposed_ts$trend
-seasonal <- decomposed_ts$seasonal
-reszty <- decomposed_ts$random
-```
-
-```{r}
-plot(cbind(trend,seasonal), main='Składowe trendu i sezonowości')
-plot(cbind(seasonal,reszty), main='Składowe sezonowości i reszt')
-plot(seasonal,main='Sezonowość')
-```
-
-#### Różnicowanie
-
-```{r, warning = F, message = F}
-adf.test(diff(X))
-```
-
-```{r, warning = F, message = F}
-kpss.test(diff(X))
-```
-
-Po różnicowaniu szereg jest stacjonarny.
-
-```{r}
-data[1:13,]
-```
-
-```{r}
-length(data)/4
-```
+Po różnicowaniu szereg jest stacjonarny
