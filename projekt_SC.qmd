@@ -1,33 +1,31 @@
 ---
-title: "projekt_SC"
-author: "DS, PT"
-format: html
+title: "Szeregi czasowe – projekt zaliczeniowy"
+author: 
+ - Dominika Stępniewska
+ - Patryk Tokarski
+date: '2024-01-23'
+format:
+  html:
+    fig-width: 7
+    fig-height: 4
+    embed-resources: true
 editor: visual
+lang: 'pl'
+execute: 
+  echo: false
 ---
 
-1.  Czego dotyczy
-2.  Identyfikacja nielosowych składowych
-    1.  trend - aproksymacja za pomocą wielomianu
-    2.  sezonowość - Holt-Winters/ aproksymacja trendu za pomocą 2. wielomianu/SARlMA
-3.  Identyfikacja (modelowanie) reszt
-    1.  korelacje
-    2.  stacjonarność
-    3.  homoskedastyczność
-    4.  Stacjonarny i homoskedastyczny -\> ARIMA
-    5.  Niejednorodna wariancja i reszty nieskorelowane -\>GARCH
-4.  Bezpośrednia identyfikacja przed dekompozycją: modele SARIMA (jeśli występuje okresowość)/ARlMA (niestacjonarność)
+# 1. Temat projektu
 
-integracja zwykła i sezonowa
+Dane przedstawiają liczbę fabrycznie nowych samochodów osobowych i ciągników siodłowych zarejestrowanych po raz pierwszy na terytorium Polski. Są to dane kwartalne pochodzące z lat 2010 - 2022.
 
-# Czego dotyczy projekt
-
-Dane przedstawiają liczbę fabrycznie nowych samochodów osobowych zarejestrowanych po raz pierwszy na terytorium Polski. Są to dane kwartalne pochodzące z lat 2010 - 2022.
-
-```{r, warning = F, message = F}
+```{r, warning = F, message = F, echo=FALSE}
 library(ggplot2)
 library(tseries)
 library(lmtest)
 library(forecast)
+library(knitr)
+library(dplyr)
 ```
 
 ```{r}
@@ -35,15 +33,37 @@ data <- read.csv(".\\pojazdy.csv", sep = ';')
 data <- data[,-c(1,2,55)]
 X <- matrix(t(matrix(data, ncol = 4, byrow = F)))
 X <- as.numeric(X)
+head(X)
 ```
 
 ```{r}
-plot(X, lwd = 2, type = "l", xlab = "czas", ylab = "liczba samochodów")
+data2 <- read.csv(".\\ciagniki.csv", sep = ';')
+data2 <- data2[,-c(1,2,55)]
+Y <- matrix(t(matrix(data2, ncol = 4, byrow = F)))
+Y <- as.numeric(Y)
+head(Y)
 ```
 
-# Identyfikacja nielosowych składowych
+```{r}
+df <- as.vector(t(data)) %>% matrix(ncol = 4, byrow = F)  %>% t() %>% c()
+ts_data <- ts(df, frequency = 4, start = c(2010, 1))
+head(ts_data, n=8)
 
-## trend - aproksymacja za pomocą wielomianu
+df2 <- as.vector(t(data2)) %>% matrix(ncol = 4, byrow = F)  %>% t() %>% c() 
+ts_data2 <- ts(df2, frequency = 4, start = c(2010, 1))
+head(ts_data2, n = 8)
+```
+
+```{r}
+plot(X, lwd = 2, type = "l", xlab = "czas", ylab = "liczba samochodów osobowych")
+plot(Y, lwd = 2, type = "l", xlab = "czas", ylab = "liczba ciągników siodłowych")
+```
+
+# 2. Identyfikacja nielosowych składowych
+
+## 2.1. Trend
+
+Do aproksymacji trendu w szeregach za pomocą wielomianu użyjemy poniższych funkcji:
 
 ```{r}
 apr_wiel <- function(szereg, stopien){
@@ -57,21 +77,16 @@ apr_wiel <- function(szereg, stopien){
 
   plot(t, szereg, type="l", 
        main=paste("Dopasowanie wielomianem stopnia:", stopien), 
-       ylab="liczba samochodów", xlab="czas")
+       ylab="liczba pojazdów", xlab="czas")
   lines(t, model$fitted.values, col=2, lwd=1.5)
-  Sys.sleep(1)}
+}
 ```
 
-Wybór stopnia wielomianu
-
 ```{r}
-# czy wyświetlać wykresy
+stopien <- function(szereg) {
 df <- NULL
 for(j in 1:10) {
-  x <- diff(X, differences = j)
-  #plot(x, main=paste("różnice ", j, 'stopnia'),
-      # col=2, type='l', lwd=2)
-  #abline(h=0,col=1)
+  x <- diff(szereg, differences = j)
   m <- mean(x)
   sigma <- mean(x^2)/choose(2*j, j)
   df <- rbind(df, c(j,m,sigma))
@@ -79,127 +94,161 @@ for(j in 1:10) {
 
 df <- as.data.frame(df)
 names(df) <- c('stopien','m', 'sigma2')
-df
-
-plot(df$stopien, df$sigma2, lty=1, lwd=2, pch=19, type='b')
+#print(df)
+plot(df$stopien, df$sigma2, lty=1, lwd=2, pch=19, type='b', xlab = "stopień", ylab = "sigma2")
+}
 ```
 
-(?) Wybieramy wielomian stopnia 4.
+### 2.1.1. Samochody osobowe
 
-```{r}
+Wybór stopnia wielomianu dla samochodów osobowych:
+
+```{r, message = F}
+stopien(X)
 apr_wiel(X, 4)
 ```
 
-Zbudowanie modelu
+Wybieramy wielomian stopnia 4.
+
+### 2.1.2. Ciągniki siodłowe
+
+Wybór stopnia wielomianu dla ciągników siodłowych:
+
+```{r, message = F}
+stopien(Y)
+apr_wiel(Y,5)
+```
+
+Wybieramy wielomian stopnia 5.
+
+### 2.1.3. Zbudowanie modeli
 
 ```{r}
 t <- 1:length(X)
 model <- lm(X ~ t + I(t^2) + I(t^3) + I(t^4))
+model2 <- lm(Y ~ t + I(t^2) + I(t^3) + I(t^4) + I(t^5))
 ```
 
-## sezonowość - Holt-Winters/ aproksymacja trendu za pomocą 2. wielomianu/SARlMA
+## 2.2. Sezonowość
 
-## dekompozycja za pomocą funkcji Holt-Winters
-
-Zbadam sezonowość metodą Holta-Wintersa. Podejrzewamy, że sezonowość jest kwartalna. Skorzystaliśmy z funkcji \`HoltWinters\` , w której wskazaliśmy że nasz model jest multiplikatywny, ponieważ wartości przez cały czas rosną, tym samym rośnie rozmiar sezonowych wahań.
+### 2.2.1 Samochody osobowe
 
 ```{r}
-df <- as.vector(t(data)) %>% matrix(ncol = 4, byrow = F)  %>% t() %>% c()
-
-do_18 <- as.vector(t(data)) %>% matrix(ncol = 4, byrow = F) %>% t() %>% c()
-do_18 <- do_18[1:(length(do_18)-4* 5)]
-ts_data_18 <- ts(do_18, frequency = 4, start = c(2010, 1))
-
-ts_data <- ts(df, frequency = 4, start = c(2010, 1))
-ts_data
+par(mfrow=c(1,2))
+acf(X, main='Szereg 1 bez różnicowania')
+acf(diff(X, lag=1), main='Szereg 1 po różnicowaniu (opóźnienie 1)')
 ```
 
-```{r}
-holt_winters <- HoltWinters(ts_data, seasonal = 'multiplicative')
-holt_winters
+Na powyższych korelogramach przedstawiono funkcję autokorelacji (ACF). Korelacje nie występują po różnicowaniu szeregu, natomiast są widoczne przed różnicowaniem. Wskazuje to na obecność sezonowości. Wniosek ten jest zgodny z charakterem danych, które prezentują sezonowość związaną z kwartalnymi okresami czasowymi.
+
+```{r, warning = F}
+adf.test(diff(X)) 
+kpss.test(diff(X))
 ```
 
-bieżące obserwacje mają duży wpływ na zmianę szeregu czasowego (alpha 0.7)
+Po różnicowaniu szereg liczby samochodów osobowych jest stacjonarny, ponieważ wyeliminowaliśmy lokalne trendy.
 
-Ostatnie obserwacje mają bardzo mały wpływ na zmianę trendu (beta 0.03)
-
-Parametr gamma wynosi 0.3, co oznacza, że ostatnie obserwacje mają mały wpływ na zmiany wzorców sezonowych.
+### 2.2.2 Ciągniki siodłowe
 
 ```{r}
-plot(holt_winters)
+par(mfrow=c(1,2))
+acf(Y, main='Szereg 2 bez różnicowania')
+acf(diff(Y, lag=2), main='Szereg 2 po różnicowaniu (opóźnienie 2)')
 ```
 
-```{r}
-przewidywania <- forecast(holt_winters, h=12) # przewiduje 12 kolejnych kwartałów
-plot(przewidywania)
+Na podstawie powyższego korelogramu dla drugiego szeregu możemy wywnioskować, że tak jak w przypadku szeregu pierwszego, obecna jest sezonowość.
+
+```{r, warning = F}
+adf.test(diff(Y)) 
+kpss.test(diff(Y))
 ```
 
-Są duże widełki w przewidywaniu przyszłych wartości. Jest to zapewne spowodowane spadkami i stabilizacją w ostatnich latach. Dla porównania poniżej przedstawiamy ten sam model, jednak dla danych bez ostatnich 5 lat (do 2018 roku):
+Szereg liczby ciągników siodłowych jest, po różnicowaniu, również stacjonarny.
+
+# 3. Identyfikacja (modelowanie) reszt
+
+## 3.1. Korelacje
+
+Do zbadania korelacji reszt w modelach użyjemy **testu Breuscha-Godfreya.**
+
+$H_0$: Błędy nie są skorelowane
+
+$H_1$: Błędy są skorelowane
 
 ```{r}
-holt_winters_2018 <- HoltWinters(ts_data_18, seasonal = 'multiplicative')
-holt_winters_2018
-przewidywania_2018 <- forecast(holt_winters_2018, h=12) # przewiduje 12 kolejnych kwartałów
-plot(przewidywania_2018)
-```
-
-Przez ostatnie spadki i stabilizaje w danych, przedział ufności dla przyszłych danych jest szerszy, zakładając zarówno mocny spadek jak i wzrost w sprzedaży aut osobowych.
-
-```{r}
-reszty_hw <- residuals(holt_winters) %>% as.vector()
-plot(reszty_hw)
-abline(a = 0, b=0, col='red')
-```
-
-```{r}
-acf(reszty_hw)
-```
-
-# Identyfikacja (modelowanie) reszt
-
-## korelacje
-
-wielomian
-
-```{r}
-# nie ma korelacji 1 rzędu, wyższych już są
-bgtest(model, order = 1)
-
-# są korelacje
 dwtest(model)
 ```
 
-## stacjonarność
+Dla pierwszego modelu wartość $p$ jest mniejsza niż przyjęty poziom istotności $0.05$, zatem odrzucamy hipotezę zerową.
 
 ```{r}
+dwtest(model2)
+```
+
+Dla drugiego modelu również odrzucamy hipotezę o braku korelacji reszt.
+
+## 3.2. Stacjonarność
+
+Do zbadania stacjonarności szeregów użyjemy **rozszerzonego testu Dickey'a-Fullera** i **testu Kwiatkowskiego-Phillipsa-Schmidta-Shina**. Dla testu ADF formułujemy hipotezy:
+
+$H_0$: Szereg czasowy jest niestacjonarny.
+
+$H_1$: Szereg czasowy jest stacjonarny.
+
+Natomiast dla testu KPSS:
+
+$H_0$: Szereg czasowy jest stacjonarny
+
+$H_1$: Szereg czasowy jest niestacjonarny
+
+```{r, warning = F}
 adf.test(X)
 kpss.test(X)
 ```
 
-Na podstawie obu testów stwierdzamy, że szereg nie jest stacjonarny.
+```{r, warning = F}
+adf.test(Y)
+kpss.test(Y)
+```
 
-## homoskedastyczność
+Na podstawie powyższych testów możemy stwierdzić, że oba szeregi nie są stacjonarne.
+
+## 3.3. Homoskedastyczność
+
+Użyjemy testu **Goldfielda-Quandta** do zbadania homoskedastyczności.
+
+$H_0$: Wariancja każdego błędu w modelu jest taka sama.
+
+$H_1$: Błędy mają różne wariancje
 
 ```{r}
 gqtest(model)
-bptest(model)
 ```
 
-nie ma podstaw do odrzucenia homoskedastycznosci
-
-## Niejednorodna wariancja i reszty nieskorelowane -\>GARCH
-
 ```{r}
-GARCH_fit <- function(x) {
+gqtest(model2)
+```
+
+Zarówno dla pierwszego jak i drugiego modelu odrzucamy hipotezę zerową na korzyść hipotezy alternatywnej. Oznacza to, że wariancje są niejednorodne.
+
+## 3.4. GARCH
+
+Modele mają niejednorodną wariancję i nieskorelowane reszty, zatem wybieramy dopasowanie **modelem GARCH.**
+
+Dla obu szeregów czasowych zastosowaliśmy model z parametrami **(1,3)**, ponieważ przy przeszukiwaniu różnych parametrów, te okazały się mieć najmniejszy współczynnik AIC.
+
+```{r echo=F, message=F}
+GARCH_fit <- function(x){
   t <- 1:length(x)
   mdl <- lm(x~t)
-  test_bp_p.val <- bptest(mdl)$p.value
-  if (test_bp_p.val<0.05) {
+  
+  test_bp_p.val <- gqtest(mdl)$p.value
+  if (test_bp_p.val < 0.05){
     ARCH_order <- GARCH_order <- AIC_value <- NULL
-    df <- NULL
-    for(p in 1:3) {
-      for(q in 0:3) {
-        mod <- garch(x, order = c(q,p)) # tu odwrócona wartość
+    for (p in 1:2){
+      for (q in 0:3){
+        mod <- garch(x,order=c(q,p))
+        #AIC(mod)
         ARCH_order <- c(ARCH_order,p)
         GARCH_order <- c(GARCH_order,q)
         AIC_value <- c(AIC_value,AIC(mod))
@@ -208,56 +257,171 @@ GARCH_fit <- function(x) {
     
     df <- data.frame(ARCH_order, GARCH_order, AIC_value)
     k <- which.min(df$AIC_value)
-    napis <- paste('dopasowujemy modelem GARCH(',ARCH_order[k],',',GARCH_order[k],')')
+    napis <- paste('Dopasowujemy modelem GARCH(', ARCH_order[k], ',', GARCH_order[k],')')
   }
   else {
-    napis <- "szereg jednorodny"
-  }
-  plot(x, type='l', main= napis)
-  print(df)
+    napis <- 'Szereg jednorodny'
+}
+
+   plot(x, type='l', main = napis)
+   abline(h=0, col=2)
 }
 ```
 
-```{r}
-GARCH_fit(df)
+```{r output=F }
+# GARCH_fit(X)
+mod <- garch(X, order=c(1,3))
 
-mod <- garch(df, order=c(1,3))
+```
+
+```{r}
 summary(mod)
 ```
 
-Test jarque bera -\> odrzucamy hipotezę o normalnym rozkładzie reszt (może przez ten outlier w 2020)
+Wartość $p$ w teście Jarque-Bera jest mniejsza niż $0.05$, zatem odrzucamy hipotezę o normalności rozkładu reszt.
 
-test Box-Ljunga -\> nie mamy podstaw do odrzucenia hipotezy o braku autokorelacji
+Na podstawie testu Boxa-Ljunga nie mamy podstaw do odrzucenia hipotezy o braku autokorelacji.
 
-```{r}
-plot(mod)
+```{r output=F}
+# GARCH_fit(Y)
+mod2 <- garch(Y, order=c(1,3))
 ```
 
-# Bezpośrednia identyfikacja przed dekompozycją: modele SARIMA (jeśli występuje okresowość)
+```{r}
+summary(mod2)
+```
+
+Dla drugiego modelu wartość $p$ w teście Jarque-Bera jest większa niż przyjęty poziom istotności, zatem nie mamy podstaw do odrzucenia hipotezy o normalności rozkładu.
+
+Na podstawie testu Boxa-Ljunga stwierdzamy, tak jak dla pierwszego modelu, że reszty nie są skorelowane.
+
+# 4. SARIMA
 
 ```{r}
-df
-auto_arima <- auto.arima(df) # 0 1 2
-auto_arima$model
-auto_arima$fitted %>% as.vector() %>% plot(type='l', col='red')
+auto.arima(ts_data)
+```
+
+Do zbudowania modelu SARIMA użyjemy parametrów dla składowych niesezonowych $(0,1,2)$ oraz parametrów sezonowych $(P,D,Q)$ gdzie:
+
+-   $P=4$ - stopień integracji sezonowej
+
+-   $D=1$ - stopień różnicowania sezonowego
+
+-   $Q=2$ - stopień ruchomej średniej sezonowej
+
+```{r}
+sarima_model <- Arima(ts_data, order = c(0,1,2),seasonal=c(4,1,2))
+summary(sarima_model)
+```
+
+```{r}
+sarima_model$fitted %>% as.vector() %>% plot(type='l', col='red')
 lines(df)
-
-auto_arima$model$phi #wsp. autoregresji
-auto_arima$model$theta #wsp. sredniej ruchomej
-auto_arima$model$Delta #stopien integracji
-```
-
-# Różnicowanie
-
-```{r}
-roznicowanie <- diff(df)
-plot(roznicowanie, type='l')
-abline(b=0, a=0, col='red')
 ```
 
 ```{r}
-adf.test(diff(df))
-kpss.test(diff(df))
+auto.arima(ts_data2)
 ```
 
-Po różnicowaniu szereg jest stacjonarny
+W drugim przypadku używamy parametrów dla składowych niesezonowych $(1,1,0)$. Parametry sezonowe pozostają bez zmian.
+
+```{r}
+sarima_model2 <- Arima(ts_data2, order = c(1,1,0), seasonal=c(4,1,2))
+summary(sarima_model2)
+```
+
+```{r}
+sarima_model2$fitted %>% as.vector() %>% plot(type='l', col='red')
+lines(df2)
+```
+
+Możemy zauważyć, że lepiej dopasowany do danych jest model drugi (dotyczący ciągników siodłowych), ponieważ wartości Kryterium Informacyjnego Akaikego (AIC) i Bayesowskiego Kryterium Schwarza (BIC) są niższe niż w przypadku modelu pierwszego (dotyczącego samochodów osobowych).
+
+# 5. Holt-Winters
+
+Skorzystaliśmy z funkcji \`HoltWinters\` , w której wskazaliśmy że nasz model jest multiplikatywny, ponieważ wartości przez cały czas rosną, tym samym rośnie rozmiar sezonowych wahań.
+
+## 5.1 Samochody osobowe
+
+```{r}
+df <- as.vector(t(data)) %>% matrix(ncol = 4, byrow = F)  %>% t() %>% c()  
+do_18 <- as.vector(t(data)) %>% matrix(ncol = 4, byrow = F) %>% t() %>% c() 
+do_18 <- do_18[1:(length(do_18)-4* 5)] 
+ts_data_18 <- ts(do_18, frequency = 4, start = c(2010, 1))  
+ts_data <- ts(df, frequency = 4, start = c(2010, 1))
+```
+
+```{r}
+holt_winters <- HoltWinters(ts_data, seasonal = 'multiplicative') 
+holt_winters
+```
+
+Parametr $alpha$ informuje nas o tym, jak duży wpływ na zmianę szeregu czasowego mają bieżące obserwacje. Jest on równy $0.71$, co świadczy o tym, że ten wpływ jest duży.
+
+Na podstawie parametru $beta$ równego $0.03$ możemy stwierdzić, że ostatnie obserwacje mają bardzo mały wpływ na zmianę trendu.
+
+Parametr $gamma$ wynosi $0.3$, co oznacza że ostatnie obserwacje mają mały wpływ na zmiany wzorców sezonowych.
+
+```{r}
+przewidywania <- forecast(holt_winters, h=12)  
+plot(holt_winters)
+plot(przewidywania)
+```
+
+Przez ostatnie spadki i stabilizacje w danych, przedział ufności dla przyszłych danych jest szerszy, zakładając zarówno mocny spadek jak i wzrost w sprzedaży aut osobowych.
+
+Dla porównania poniżej przedstawiamy ten sam model, jednak dla danych bez ostatnich 5 lat (do 2018 roku):
+
+```{r}
+holt_winters_2018 <- HoltWinters(ts_data_18, seasonal = 'multiplicative') 
+# holt_winters_2018 
+przewidywania_2018 <- forecast(holt_winters_2018, h=12) # przewiduje 12 kolejnych kwartałów 
+plot(przewidywania_2018)
+```
+
+Widać wyraźnie, że model przewiduje wzrost danych, zachowując przy tym sezonowe spadki.
+
+Teraz pokażemy wykres reszt dla modelu Holt-Winters i korelogram reszt.
+
+```{r}
+reszty_hw <- residuals(holt_winters) %>% as.vector() 
+
+par(mfrow=c(1,2))
+plot(reszty_hw) 
+abline(a = 0, b=0, col='red')
+acf(reszty_hw)
+```
+
+Linie przerywane reprezentują przedziały ufności dla autokorelacji. Wartości przekraczające te przedziały sugerują istotne korelacje.
+
+## 5.2 Ciągniki siodłowe
+
+```{r}
+df2 <- as.vector(t(data2)) %>% matrix(ncol = 4, byrow = F)  %>% t() %>% c() 
+ts_data2 <- ts(df2, frequency = 4, start = c(2010, 1))
+```
+
+```{r}
+holt_winters2 <- HoltWinters(ts_data2, seasonal = 'multiplicative') 
+holt_winters2
+```
+
+Tak jak w przypadku samochodów osobowych, bieżące obserwacje mają duży wpływ na zmianę szeregu czasowego $(alpha=0.73)$, ostatnie obserwacje mają bardzo mały wpływ na zmianę trendu $(beta=0.04)$ oraz mają one mały wpływ na zmiany wzorców sezonowych $(gamma=0.2)$.
+
+```{r}
+przewidywania2 <- forecast(holt_winters2, h=12)  
+plot(holt_winters2)
+plot(przewidywania2)
+```
+
+Przedziały ufności mają duże zakresy. Wyniki prognoz wskazują na tendencję wzrostową liczby ciągników siodłowych.
+
+```{r}
+reszty_hw2 <- residuals(holt_winters2) %>% as.vector() 
+par(mfrow=c(1,2))
+plot(reszty_hw2) 
+abline(a = 0, b=0, col='red')
+acf(reszty_hw2)
+```
+
+# 
